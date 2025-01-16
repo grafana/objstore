@@ -431,3 +431,7 @@ func NewTestBucket(t testing.TB) (objstore.Bucket, func(), error) {
 		t.Logf("deleted temporary Oracle Cloud Infrastructure bucket '%s' for testing", bkt.name)
 	}, nil
 }
+
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	panic("unimplemented: OCI.GetAndReplace")
+}

@@ -123,6 +123,19 @@ func (t TracingBucket) Upload(ctx context.Context, name string, r io.Reader) (er
 	return t.bkt.Upload(ctx, name, r)
 }
 
+func (t TracingBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) (err error) {
+	ctx, span := t.tracer.Start(ctx, "bucket_get_and_replace")
+	defer span.End()
+	span.SetAttributes(attribute.String("name", name))
+
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+		}
+	}()
+	return t.bkt.GetAndReplace(ctx, name, f)
+}
+
 func (t TracingBucket) Delete(ctx context.Context, name string) (err error) {
 	ctx, span := t.tracer.Start(ctx, "bucket_delete")
 	defer span.End()

@@ -580,3 +580,7 @@ func createTemporaryTestBucketName(t testing.TB) string {
 	}
 	return strings.TrimSuffix(name, "-")
 }
+
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	panic("unimplemented: COS.GetAndReplace")
+}

@@ -445,3 +445,7 @@ func configFromEnv() Config {
 	}
 	return c
 }
+
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	panic("unimplemented: OBS.GetAndReplace")
+}
