@@ -432,6 +432,6 @@ func NewTestBucket(t testing.TB) (objstore.Bucket, func(), error) {
 	}, nil
 }
 
-func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
 	panic("unimplemented: OCI.GetAndReplace")
 }
