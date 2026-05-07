@@ -172,6 +172,26 @@ func TestGetAndReplace_Subdirectories(t *testing.T) {
 	})
 }
 
+func TestGetAndReplace_CancelledContext(t *testing.T) {
+	b, err := NewBucket(t.TempDir())
+	testutil.Ok(t, err)
+
+	// create file
+	err = b.Upload(context.Background(), "foo.txt", strings.NewReader("foo"))
+	testutil.Ok(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// try to replace file, replace file
+	err = b.GetAndReplace(ctx, "foo.txt", func(_ io.ReadCloser) (io.ReadCloser, error) {
+		testutil.Assert(t, false) // must never get there because of cancelled context
+		return io.NopCloser(strings.NewReader("bar")), nil
+	})
+	testutil.NotOk(t, err)
+	testutil.Equals(t, context.Canceled, err)
+}
+
 func TestExists_CancelledContext(t *testing.T) {
 	b, err := NewBucket(t.TempDir())
 	testutil.Ok(t, err)
