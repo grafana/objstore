@@ -271,6 +271,10 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) (err erro
 }
 
 func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	file := filepath.Join(b.rootDir, name)
 	if err := os.MkdirAll(filepath.Dir(file), os.ModePerm); err != nil {
 		return err
