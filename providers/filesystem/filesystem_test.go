@@ -6,6 +6,7 @@ package filesystem
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -153,6 +154,22 @@ func TestGetRange_CancelledContext(t *testing.T) {
 	_, err = b.GetRange(ctx, "some-file", 0, 100)
 	testutil.NotOk(t, err)
 	testutil.Equals(t, context.Canceled, err)
+}
+
+func TestGetAndReplace_Subdirectories(t *testing.T) {
+	b, err := NewBucket(t.TempDir())
+	testutil.Ok(t, err)
+
+	ctx := context.Background()
+	err = b.GetAndReplace(ctx, "foo/bar/baz.txt", func(rc io.ReadCloser) (io.ReadCloser, error) {
+		testutil.Assert(t, rc == nil, "file did not exist yet")
+		return io.NopCloser(strings.NewReader("baz old")), nil
+	})
+
+	err = b.GetAndReplace(ctx, "foo/bar/baz.txt", func(rc io.ReadCloser) (io.ReadCloser, error) {
+		testutil.Assert(t, rc != nil, "file existed")
+		return io.NopCloser(strings.NewReader("baz new")), nil
+	})
 }
 
 func TestExists_CancelledContext(t *testing.T) {
