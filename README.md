@@ -191,6 +191,7 @@ config:
       key_file: ""
       server_name: ""
       insecure_skip_verify: false
+    force_attempt_http2: false
     disable_compression: false
   trace:
     enable: false
@@ -205,6 +206,7 @@ config:
     kms_encryption_context: {}
     encryption_key: ""
   sts_endpoint: ""
+  max_retries: 0
 prefix: ""
 ```
 
@@ -388,8 +390,10 @@ config:
       key_file: ""
       server_name: ""
       insecure_skip_verify: false
+    force_attempt_http2: false
     disable_compression: false
   chunk_size_bytes: 0
+  max_retries: 0
 prefix: ""
 ```
 
@@ -460,6 +464,9 @@ Config file format is the following:
 ```yaml mdox-exec="go run scripts/cfggen/main.go --name=azure.Config"
 type: AZURE
 config:
+  az_tenant_id: ""
+  client_id: ""
+  client_secret: ""
   storage_account: ""
   storage_account_key: ""
   storage_connection_string: ""
@@ -490,6 +497,7 @@ config:
       key_file: ""
       server_name: ""
       insecure_skip_verify: false
+    force_attempt_http2: false
     disable_compression: false
   msi_resource: ""
 prefix: ""
@@ -553,6 +561,7 @@ config:
       key_file: ""
       server_name: ""
       insecure_skip_verify: false
+    force_attempt_http2: false
     disable_compression: false
 prefix: ""
 ```
@@ -572,6 +581,7 @@ config:
   endpoint: ""
   secret_key: ""
   secret_id: ""
+  max_retries: 0
   http_config:
     idle_conn_timeout: 1m30s
     response_header_timeout: 2m
@@ -587,6 +597,7 @@ config:
       key_file: ""
       server_name: ""
       insecure_skip_verify: false
+    force_attempt_http2: false
     disable_compression: false
 prefix: ""
 ```
@@ -733,6 +744,7 @@ config:
   endpoint: ""
   access_key: ""
   secret_key: ""
+  max_retries: 0
   http_config:
     idle_conn_timeout: 1m30s
     response_header_timeout: 2m
@@ -748,6 +760,7 @@ config:
       key_file: ""
       server_name: ""
       insecure_skip_verify: false
+    force_attempt_http2: false
     disable_compression: false
 prefix: ""
 ```
