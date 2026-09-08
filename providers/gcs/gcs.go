@@ -344,10 +344,6 @@ func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 
 // Upload writes the file specified in src to remote GCS location specified as target.
 func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
-	return b.upload(ctx, name, r, 0, false, opts...)
-}
-
-func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, generation int64, requireNewObject bool, opts ...objstore.ObjectUploadOption) error {
 	if err := objstore.ValidateUploadOptions(b.SupportedObjectUploadOptions(), opts...); err != nil {
 		return err
 	}
@@ -410,8 +406,11 @@ func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadC
 		defer newContent.Close()
 	}
 
-	// Upload with the previous generation, or mustNotExist for new objects
-	return b.upload(ctx, name, newContent, generation, storageReader == nil)
+	if generation != 0 {
+		ver := objstore.ObjectVersion{Type: objstore.Generation, Value: fmt.Sprint(generation)}
+		return b.Upload(ctx, name, newContent, objstore.WithIfMatch(&ver))
+	}
+	return b.Upload(ctx, name, newContent, objstore.WithIfNotExists())
 }
 
 func (b *Bucket) SupportedObjectUploadOptions() []objstore.ObjectUploadOptionType {

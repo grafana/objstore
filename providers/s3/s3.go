@@ -652,7 +652,7 @@ func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadC
 		ver := &objstore.ObjectVersion{Type: objstore.ETag, Value: etag}
 		return b.Upload(ctx, name, newContent, objstore.WithIfMatch(ver))
 	}
-	return b.Upload(ctx, name, newContent)
+	return b.Upload(ctx, name, newContent, objstore.WithIfNotExists())
 }
 
 func (b *Bucket) SupportedObjectUploadOptions() []objstore.ObjectUploadOptionType {
