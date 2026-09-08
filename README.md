@@ -59,7 +59,10 @@ type Bucket interface {
 
 	// Upload the contents of the reader as an object into the bucket.
 	// Upload should be idempotent.
-	Upload(ctx context.Context, name string, r io.Reader) error
+	Upload(ctx context.Context, name string, r io.Reader, options ...ObjectUploadOption) error
+
+	// SupportedObjectUploadOptions returns a list of ObjectUploadOptions supported by the underlying provider.
+	SupportedObjectUploadOptions() []ObjectUploadOptionType
 
 	// Delete removes the object with the given name.
 	// If object does not exist in the moment of deletion, Delete should throw error.
@@ -154,6 +157,19 @@ Current object storage client implementations:
 
 NOTE: Currently Thanos requires strong consistency (write-read) for object store implementation for singleton Compaction purposes.
 
+#### Support for Conditional Writes
+
+Most, not all, object stores provide an API for write conditions. The `objstore` module partially supports this using `ObjectUploadOption` parameters in `Upload` of the `Bucket` interface.
+
+Version or etag metadata can be retrieved for use as write conditions from the `Attributes` method of `BucketReader`. Client should call `SupportedObjectUploadOptions` to validate which object upload options (`IfNotExists`, `IfMatch`, `IfNotMatch`) are supported by the provider.
+
+Providers with conditional write support include:
+
+- Google Cloud Storage ([cloud provider documentation](https://cloud.google.com/storage/docs/request-preconditions)))
+- Azure Storage Buckets ([cloud provider documentation](https://learn.microsoft.com/en-us/rest/api/storageservices/specifying-conditional-headers-for-blob-service-operations))
+- S3 ([cloud provider documentation](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html)). `IfNotMatch` is currently not supported by AWS.
+- Local Filesystem (for testing and demos). Only supported by filesystems with extended attribute (`xattr`) support.
+
 ##### S3
 
 Thanos uses the [minio client](https://github.com/minio/minio-go) library to upload Prometheus data into AWS S3.
@@ -191,6 +207,7 @@ config:
       key_file: ""
       server_name: ""
       insecure_skip_verify: false
+    force_attempt_http2: false
     disable_compression: false
   trace:
     enable: false
@@ -205,6 +222,7 @@ config:
     kms_encryption_context: {}
     encryption_key: ""
   sts_endpoint: ""
+  max_retries: 0
 prefix: ""
 ```
 
@@ -388,8 +406,10 @@ config:
       key_file: ""
       server_name: ""
       insecure_skip_verify: false
+    force_attempt_http2: false
     disable_compression: false
   chunk_size_bytes: 0
+  max_retries: 0
 prefix: ""
 ```
 
@@ -460,6 +480,9 @@ Config file format is the following:
 ```yaml mdox-exec="go run scripts/cfggen/main.go --name=azure.Config"
 type: AZURE
 config:
+  az_tenant_id: ""
+  client_id: ""
+  client_secret: ""
   storage_account: ""
   storage_account_key: ""
   storage_connection_string: ""
@@ -490,6 +513,7 @@ config:
       key_file: ""
       server_name: ""
       insecure_skip_verify: false
+    force_attempt_http2: false
     disable_compression: false
   msi_resource: ""
 prefix: ""
@@ -553,6 +577,7 @@ config:
       key_file: ""
       server_name: ""
       insecure_skip_verify: false
+    force_attempt_http2: false
     disable_compression: false
 prefix: ""
 ```
@@ -572,6 +597,7 @@ config:
   endpoint: ""
   secret_key: ""
   secret_id: ""
+  max_retries: 0
   http_config:
     idle_conn_timeout: 1m30s
     response_header_timeout: 2m
@@ -587,6 +613,7 @@ config:
       key_file: ""
       server_name: ""
       insecure_skip_verify: false
+    force_attempt_http2: false
     disable_compression: false
 prefix: ""
 ```
@@ -670,6 +697,7 @@ config:
     max_conns_per_host: 0         // Optional maximum total number of connections per host.
     disable_compression: false    // Optional. If true, prevents the Transport from requesting compression.
     client_timeout: 90s           // Optional time limit for requests made by the HTTP Client.
+prefix: ""
 ```
 
 #### Instance Principal Provider
@@ -682,6 +710,7 @@ config:
   provider: "instance-principal"
   bucket: ""
   compartment_ocid: ""
+prefix: ""
 ```
 
 You can also include any of the optional configuration just like the example in `Default Provider`.
@@ -702,6 +731,7 @@ config:
   fingerprint: ""
   privatekey: ""
   passphrase: ""         // Optional passphrase to encrypt the private API Signing key
+prefix: ""
 ```
 
 You can also include any of the optional configuration just like the example in `Default Provider`.
@@ -716,6 +746,7 @@ config:
   provider: "oke-workload-identity"
   bucket: ""
   region: ""
+prefix: ""
 ```
 
 The `bucket` and `region` fields are required. The `region` field identifies the bucket region.
@@ -733,6 +764,7 @@ config:
   endpoint: ""
   access_key: ""
   secret_key: ""
+  max_retries: 0
   http_config:
     idle_conn_timeout: 1m30s
     response_header_timeout: 2m
@@ -748,6 +780,7 @@ config:
       key_file: ""
       server_name: ""
       insecure_skip_verify: false
+    force_attempt_http2: false
     disable_compression: false
 prefix: ""
 ```
