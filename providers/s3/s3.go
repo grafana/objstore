@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"runtime"
@@ -416,7 +417,16 @@ func (b *Bucket) IterWithAttributes(ctx context.Context, dir string, f func(attr
 		UseV1:     b.listObjectsV1,
 	}
 
-	for object := range b.client.ListObjects(ctx, b.name, opts) {
+	listCtx, cancel := context.WithCancel(ctx)
+	objects := b.client.ListObjects(listCtx, b.name, opts)
+	// minio-go requires the channel to be drained after canceling, otherwise its listing goroutine leaks.
+	defer func() {
+		cancel()
+		for range objects {
+		}
+	}()
+
+	for object := range objects {
 		// Catch the error when failed to list objects.
 		if object.Err != nil {
 			return object.Err
@@ -571,15 +581,13 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader, opts ...o
 	}
 
 	partSize := b.partSize
-	if size < int64(partSize) {
+	if size >= 0 && size < int64(partSize) {
 		partSize = 0
 	}
 
 	// Cloning map since minio may modify it
 	userMetadata := make(map[string]string, len(b.putUserMetadata))
-	for k, v := range b.putUserMetadata {
-		userMetadata[k] = v
-	}
+	maps.Copy(userMetadata, b.putUserMetadata)
 
 	uploadOpts := objstore.ApplyObjectUploadOptions(opts...)
 
