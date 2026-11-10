@@ -4,12 +4,17 @@
 package s3
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +22,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/errutil"
 	"github.com/thanos-io/objstore/exthttp"
 )
@@ -483,4 +489,156 @@ func TestNewBucketWithErrorRoundTripper(t *testing.T) {
 	// We expect an error from the RoundTripper
 	testutil.NotOk(t, err)
 	testutil.Assert(t, errutil.IsMockedError(err), "Expected RoundTripper error, got: %v", err)
+}
+
+func TestBucket_putObjectOptions(t *testing.T) {
+	const (
+		partSize = 64 * 1024 * 1024
+		mib      = 1024 * 1024
+	)
+	ifMatch := objstore.UploadObjectParams{Condition: &objstore.ObjectVersion{Type: objstore.ETag, Value: "etag"}}
+	ifNotExists := objstore.UploadObjectParams{IfNotExists: true}
+
+	for _, tc := range []struct {
+		name                 string
+		disableMultipart     bool
+		size                 int64
+		uploadOpts           objstore.UploadObjectParams
+		wantDisableMultipart bool
+		wantPartSize         uint64
+		wantHeader           http.Header
+	}{
+		{name: "plain upload under the part size keeps multipart enabled with the default part size", size: mib, wantPartSize: 0},
+		{name: "plain upload over 16 MiB keeps multipart enabled", size: 17 * mib, wantPartSize: 0},
+		{name: "plain upload over the part size uses the configured part size", size: partSize + 1, wantPartSize: partSize},
+		{name: "plain upload keeps multipart disabled when the config disables it", disableMultipart: true, size: 17 * mib, wantDisableMultipart: true},
+		{name: "if-match upload under 16 MiB disables multipart", size: mib, uploadOpts: ifMatch, wantDisableMultipart: true, wantHeader: http.Header{"If-Match": {`"etag"`}}},
+		{name: "if-match upload over 16 MiB disables multipart", size: 17 * mib, uploadOpts: ifMatch, wantDisableMultipart: true, wantHeader: http.Header{"If-Match": {`"etag"`}}},
+		{name: "if-match upload over the part size disables multipart", size: partSize + 1, uploadOpts: ifMatch, wantDisableMultipart: true, wantPartSize: partSize, wantHeader: http.Header{"If-Match": {`"etag"`}}},
+		{name: "if-match upload at the single PUT limit disables multipart", size: maxSinglePutObjectSize, uploadOpts: ifMatch, wantDisableMultipart: true, wantPartSize: partSize, wantHeader: http.Header{"If-Match": {`"etag"`}}},
+		{name: "if-not-exists upload over 16 MiB disables multipart", size: 17 * mib, uploadOpts: ifNotExists, wantDisableMultipart: true, wantHeader: http.Header{"If-None-Match": {"*"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bkt := &Bucket{disableMultipart: tc.disableMultipart, partSize: partSize}
+
+			got, err := bkt.putObjectOptions(tc.size, tc.uploadOpts, nil)
+			testutil.Ok(t, err)
+			testutil.Equals(t, tc.wantDisableMultipart, got.DisableMultipart)
+			testutil.Equals(t, tc.wantPartSize, got.PartSize)
+			for k := range tc.wantHeader {
+				testutil.Equals(t, tc.wantHeader.Get(k), got.Header().Get(k))
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name       string
+		size       int64
+		uploadOpts objstore.UploadObjectParams
+		wantErr    string
+	}{
+		{name: "if-match upload over the single PUT limit returns an error", size: maxSinglePutObjectSize + 1, uploadOpts: ifMatch, wantErr: "exceeds the single PutObject limit"},
+		{name: "if-not-exists upload over the single PUT limit returns an error", size: maxSinglePutObjectSize + 1, uploadOpts: ifNotExists, wantErr: "exceeds the single PutObject limit"},
+		{name: "if-match upload of unknown size returns an error", size: -1, uploadOpts: ifMatch, wantErr: "needs a known object size"},
+		{name: "if-none-match upload with an ETag returns an unsupported option error", size: mib, uploadOpts: objstore.UploadObjectParams{IfNotMatch: true, Condition: ifMatch.Condition}, wantErr: objstore.ErrUploadOptionNotSupported.Error()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bkt := &Bucket{partSize: partSize}
+
+			_, err := bkt.putObjectOptions(tc.size, tc.uploadOpts, nil)
+			testutil.NotOk(t, err)
+			testutil.Assert(t, strings.Contains(err.Error(), tc.wantErr), "expected error containing %q, got %v", tc.wantErr, err)
+		})
+	}
+}
+
+// putRequest is a PutObject request that fakeS3 received.
+type putRequest struct {
+	query  url.Values
+	header http.Header
+}
+
+// fakeS3 serves GetObject and PutObject for a single object and records
+// every PutObject request.
+type fakeS3 struct {
+	t       *testing.T
+	mtx     sync.Mutex
+	content []byte
+	etag    string
+	puts    []putRequest
+}
+
+func (f *fakeS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+
+	switch r.Method {
+	case http.MethodGet:
+		if f.content == nil {
+			w.Header().Set("Content-Type", "application/xml")
+			w.WriteHeader(http.StatusNotFound)
+			_, err := w.Write([]byte(`<Error><Code>NoSuchKey</Code><Message>not found</Message></Error>`))
+			testutil.Ok(f.t, err)
+			return
+		}
+		w.Header().Set("ETag", `"`+f.etag+`"`)
+		w.Header().Set("Last-Modified", "Wed, 21 Oct 2015 07:28:00 GMT")
+		w.Header().Set("Content-Length", strconv.Itoa(len(f.content)))
+		_, err := w.Write(f.content)
+		testutil.Ok(f.t, err)
+	case http.MethodPut:
+		_, err := io.Copy(io.Discard, r.Body)
+		testutil.Ok(f.t, err)
+		f.puts = append(f.puts, putRequest{query: r.URL.Query(), header: r.Header.Clone()})
+		w.Header().Set("ETag", `"new"`)
+	default:
+		f.t.Errorf("unexpected %s request to %s", r.Method, r.URL)
+		w.WriteHeader(http.StatusNotImplemented)
+	}
+}
+
+func TestBucket_GetAndReplace(t *testing.T) {
+	newBucket := func(t *testing.T, srv *httptest.Server) *Bucket {
+		cfg := DefaultConfig
+		cfg.Bucket = "test-bucket"
+		cfg.Endpoint = srv.Listener.Addr().String()
+		cfg.Insecure = true
+		cfg.Region = "test"
+		cfg.AccessKey = "test"
+		cfg.SecretKey = "test"
+
+		bkt, err := NewBucketWithConfig(log.NewNopLogger(), cfg, "test", nil)
+		testutil.Ok(t, err)
+		return bkt
+	}
+
+	body := bytes.Repeat([]byte("a"), 17*1024*1024)
+
+	for _, tc := range []struct {
+		name       string
+		existing   []byte
+		wantHeader string
+		wantValue  string
+	}{
+		{name: "uploads a body of unknown size in a single PUT with a known size and the ETag of the existing object", existing: []byte("original"), wantHeader: "If-Match", wantValue: `"original-etag"`},
+		{name: "uploads a body of unknown size in a single PUT with a known size when the object does not exist", wantHeader: "If-None-Match", wantValue: "*"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeS3{t: t, content: tc.existing, etag: "original-etag"}
+			srv := httptest.NewServer(fake)
+			defer srv.Close()
+
+			bkt := newBucket(t, srv)
+			testutil.Ok(t, bkt.GetAndReplace(context.Background(), "test", func(existing io.ReadCloser) (io.ReadCloser, error) {
+				// io.NopCloser hides the size of the bytes.Reader.
+				return io.NopCloser(bytes.NewReader(body)), nil
+			}))
+
+			testutil.Equals(t, 1, len(fake.puts))
+			put := fake.puts[0]
+			testutil.Assert(t, !put.query.Has("uploadId") && !put.query.Has("uploads"), "expected a single PUT, got query %v", put.query)
+			testutil.Equals(t, strconv.Itoa(len(body)), put.header.Get("X-Amz-Decoded-Content-Length"))
+			testutil.Equals(t, tc.wantValue, put.header.Get(tc.wantHeader))
+		})
+	}
 }
