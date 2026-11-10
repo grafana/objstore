@@ -577,7 +577,7 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader, opts ...o
 		// A conditional write must use a single PutObject call, and minio-go
 		// needs the size for that call. This buffers the whole body in memory.
 		level.Warn(b.logger).Log("msg", "could not guess file size for conditional upload; buffering the whole object in memory", "name", name, "err", err)
-		data, err := io.ReadAll(r)
+		data, err := io.ReadAll(io.LimitReader(r, maxSinglePutObjectSize+1))
 		if err != nil {
 			return errors.Wrap(err, "read body of conditional upload")
 		}
