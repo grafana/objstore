@@ -1,6 +1,6 @@
 module github.com/thanos-io/objstore
 
-go 1.22
+go 1.26.0
 
 require (
 	cloud.google.com/go/storage v1.43.0
@@ -22,8 +22,8 @@ require (
 	github.com/prometheus/client_golang v1.17.0
 	github.com/prometheus/common v0.44.0
 	github.com/tencentyun/cos-go-sdk-v5 v0.7.40
-	go.opentelemetry.io/otel v1.24.0
-	go.opentelemetry.io/otel/trace v1.24.0
+	go.opentelemetry.io/otel v1.47.0
+	go.opentelemetry.io/otel/trace v1.47.0
 	go.uber.org/atomic v1.9.0
 	golang.org/x/oauth2 v0.21.0
 	golang.org/x/sync v0.10.0
@@ -64,7 +64,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-logfmt/logfmt v0.5.1 // indirect
-	github.com/go-logr/logr v1.4.1 // indirect
+	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/goccy/go-json v0.10.4 // indirect
 	github.com/gofrs/flock v0.8.1 // indirect
@@ -93,9 +93,11 @@ require (
 	github.com/sony/gobreaker v0.5.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	go.opencensus.io v0.24.0 // indirect
+	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0 // indirect
-	go.opentelemetry.io/otel/metric v1.24.0 // indirect
+	go.opentelemetry.io/otel/log v1.47.0 // indirect
+	go.opentelemetry.io/otel/metric v1.47.0 // indirect
 	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
